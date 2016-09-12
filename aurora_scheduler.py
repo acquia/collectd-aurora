@@ -26,6 +26,8 @@ except ImportError:
     """MoveAlong Along, We assume we are testing"""
     # Todo Add some error checking to the collectd.* use cases.
 
+DEFAULT_METRIC_TYPE = 'gauge'
+
 # todo more logging
 VERBOSE_LOGGING = False
 COLLECTD_PLUGIN_NAMESPACE = "aurora-scheduler"
@@ -741,6 +743,10 @@ def get_metric(t):
             v = DYNAMIC_STAT_LIST['tasks_']['tasks_lost_rack_']
             v = Stat(v.type, t)
             type_instance = t
+        else:
+            # use default metric type for everything
+            v = Stat(DEFAULT_METRIC_TYPE, t)
+            type_instance = t
         return v, type_instance
     else:
         return METRICS[t], type_instance
@@ -755,10 +761,20 @@ def get_metrics(conf):
     plugin_instance = conf['instance']
 
     results = fetch_info(scheme=conf['scheme'], host=conf['host'], path=conf['path'], port=conf['port'])
-    for key, value in results.iteritems():
-        metric, type_instance = get_metric(key)
-        if metric is not None:
-            dispatch_stat(value, metric.name, metric.type, plugin_instance, type_instance)
+    if results is not None:
+        for key, value in results.iteritems():
+            try:
+                # Not all lines returned will have a numeric metric.
+                # To account for this, we attempt to cast the 'value'
+                # portion as a float. This is necessary because we try
+                # to send every metric even if they are not in the
+                # global metric list, by default as a 'gauge'.
+                value = float(value)
+                metric, type_instance = get_metric(key)
+                if metric is not None:
+                    dispatch_stat(value, metric.name, metric.type, plugin_instance, type_instance)
+            except ValueError:
+                continue
 
 
 def dispatch_stat(value, name, type, plugin_instance=None, type_instance=None):
